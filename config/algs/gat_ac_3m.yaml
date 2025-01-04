@@ -1,0 +1,85 @@
+name: "gat_ac_3m"
+
+#####################
+# 1) 環境與 Runner  #
+#####################
+env: "sc2"         # 使用 StarCraft2Env
+env_args:
+  map_name: "3m"           # 三個Marine vs 三個Marine
+  seed: 123                # (可自定)  
+  difficulty: "7"          # 默認VeryDifficult
+  state_last_action: False # 因為 COMA 的 critic 裡自己會加 last action
+  obs_last_action: False   # 同上
+  # 其他 SMAC 參數（自行補充需要的部分）...
+
+runner: "episode"   # 單環境，EpisodeRunner
+
+# Runner 相關測試參數
+batch_size_run: 1   # 同時跑幾個 env
+test_nepisode: 20
+test_interval: 2000
+
+############################
+# 2) Agent / MAC / Learner #
+############################
+agent: "gat_agent"     # 你自定義的 GAT agent (modules/agents/gat_agent.py)
+mac:   "gat_mac"       # 你自定義的 GAT MAC   (controllers/gat_mac.py)
+
+# --- Actor-Critic 常用 ---
+agent_output_type: "pi_logits"    # 表示 Actor 輸出 Policy logits (對應多項式 action_selector)
+action_selector: "multinomial"    # COMA/Actor-Critic 通常用 multinomial
+mask_before_softmax: False        # 跟原 COMA 設定類似
+
+# Learner：我們用 COMA (Actor-Critic)
+learner: "coma_learner"
+critic_q_fn: "coma"               # 亦可不額外指定，若寫在 Learner 內部
+critic_baseline_fn: "coma"
+critic_train_mode: "seq"
+critic_train_reps: 1
+td_lambda: 0.8
+q_nstep: 0  # 0 = default one-step Q
+
+#######################
+# 3) GAT 相關參數示例 #
+#######################
+# （若你 GAT agent 需要更多參數，也可一併加上）
+gat_node_input_dim: 9   # Xl 每個節點的 features 維度 (e.g. health, shield, type, pos_x, ...)
+gat_edge_input_dim: 3   # El 每條邊的 features 維度 (e.g. 距離、可見性、是否可攻擊)
+gat_hidden_dim: 32      # GAT hidden_dim
+gat_num_heads: 1        # 如果你想做 multi-head = 1
+
+############################
+# 4) 訓練 & Hyperparameters #
+############################
+t_max: 100000           # 總訓練步數 / 时间步
+batch_size: 32          # 每次學習抽多少 episode
+buffer_size: 5000       # Replay buffer 大小（COMA 其實不太依賴 large buffer，可調整）
+burn_in_period: 32      # 這段期間先不 train
+
+# Optim & Learning rates
+gamma: 0.99
+lr: 0.0005
+critic_lr: 0.0005
+grad_norm_clip: 10
+
+# COMA 的 exploration 通常會設 epsilon, 但因為是多項式 action_selector，所以 epsilon 只在 baseline exploration 用
+epsilon_start: 0.5
+epsilon_finish: 0.01
+epsilon_anneal_time: 100000
+
+#####################
+# 5) Logging / Save #
+#####################
+runner_log_interval: 2000
+learner_log_interval: 2000
+log_interval: 2000
+
+save_model: False
+save_model_interval: 200000
+checkpoint_path: ""
+evaluate: False
+load_step: 0
+save_replay: False
+
+use_cuda: True          # 是否使用 GPU
+double_q: False         # actor-critic 通常不需要 double_q

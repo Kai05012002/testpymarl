@@ -3,98 +3,94 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
 
 from .basic_controller import BasicMAC
-from modules.agents.gat_agent import SimpleGAT  # 假設你在 gat_agent.py 寫一個簡易 GAT
-# 也可以不透過 gat_agent.py，直接在這檔案裡寫 GAT class
+from modules.agents.gat_agent import GATAgent  # 假定我們在 modules/agents/gat_agent.py
+import math
 
 class GATMAC(BasicMAC):
+    """
+    這個MAC一次forward整張圖(6個或N個nodes)，
+    透過GATAgent來計算GAT embedding。
+    """
     def __init__(self, scheme, groups, args):
         super().__init__(scheme, groups, args)
-        self.args = args
-        # BasicMAC 裡面已經有 self.n_agents, self.action_selector, etc.
-        # 但 "敵軍數" 要從 env_info 或 config 取得，你可在 runner/setup 時賦值或做個固定
-        # 3m 地圖可以先寫死 enemy_num=3，簡化demo
-        self.n_enemies = 3  
-        self.n_nodes = self.n_agents + self.n_enemies  # 3 + 3 = 6
+        # 注意：BasicMAC.__init__() 會呼叫 self._build_agents()，
+        #      但我們要改用自己的 agent，因此可改override
 
-        # 建立我們的 GAT 網路
-        # 例如 simpleGAT 裡面需要 (node_input_dim, num_heads, hidden_dim...) 這些參數
-        self.gat_net = SimpleGAT(
-            node_input_dim=args.gat_node_input_dim,
-            edge_input_dim=args.gat_edge_input_dim,
-            hidden_dim=args.gat_hidden_dim,
-            n_heads=args.gat_num_heads
-        )
-
-        # Q-head: 把對應我方Marine的 node embedding -> Q-values
-        # 假設我們先用一個簡單 linear
-        self.q_head = nn.Linear(args.gat_hidden_dim, self.args.n_actions)
+    def _build_agents(self, input_shape):
+        """
+        覆蓋BasicMAC原本的建構行為，
+        但這裡直接實例化我們自定義的 GATAgent。
+        """
+        self.agent = GATAgent(self.args)
 
     def forward(self, ep_batch, t, test_mode=False):
-        """ep_batch: EpisodeBatch
-           t: time index
         """
-        bs = ep_batch.batch_size  # batch_size
-        # 取得我方/敵方的狀態資訊，組成 Xl
-        # 這裡示範從 state 中萃取，或用 obs + 你自定義的收集方式
+        主要流程：
+          1. 從batch提取 state (或obs) → 建立 node features X_l
+          2. 計算 edge features E_l
+          3. 一次 GAT forwarding → node embeddings
+          4. 取對應 agent node embedding → linear => Q-values
+        """
+        bs = ep_batch.batch_size
 
-        # step 1: 取出 state
-        # shape = (bs, state_dim)，裡面包含(3我方 + 3敵方)單位座標/血量/etc. 
-        # 你要確定 starcraft2env 的 state 是否足以重建整個圖
-        state = ep_batch["state"][:, t]  # (bs, state_dim)
+        # 1) 取得 state
+        # shape = (bs, state_dim)
+        state = ep_batch["state"][:, t]
+        # 2) node_features, edge_features
+        node_feats = self._build_node_features(state)  # (bs, n_nodes, in_dim)
+        edge_feats = self._build_edge_features(node_feats)  # (bs, n_nodes, n_nodes, e_dim)
 
-        # step 2: 重建 6 個 node feature (X_l)
-        # 這裡只是 pseudo code, 你要自己把 state slice -> node0 features, node1 features, ...
-        # e.g. node_features shape = (bs, n_nodes, node_input_dim)
-        node_features = self._build_node_features_3m(state)
+        # 3) forward GAT
+        # GATAgent預設: forward(node_feats, edge_feats) -> (bs, n_nodes, embed)
+        node_embeds = self.agent(node_feats, edge_feats)
 
-        # step 3: 構建 edge features (El)
-        # e.g. shape = (bs, n_nodes, n_nodes, edge_input_dim)
-        edge_features = self._build_edge_features_3m(node_features)
+        # 4) 假設前 N_agents 個node對應我方 agent => each agent's node_emb => MLP => Q
+        #    這裡只是示例：3m => 3個我方 + 3個敵方 => n_agents=3 => 我方node在前3
+        n_agents = self.args.n_agents
+        agent_embeds = node_embeds[:, :n_agents, :]  # shape=(bs, n_agents, hidden_dim)
 
-        # step 4: 一次 forward GAT
-        # 你可以 batch 化 GAT，或用 for loop 每個 batch sample 跑
-        # 這裡假設 SimpleGAT forward: (bs, N, node_input_dim), (bs, N, N, edge_input_dim) -> (bs, N, hidden_dim)
-        node_embeddings = self.gat_net(node_features, edge_features)  # shape = (bs, n_nodes, hidden_dim)
-
-        # step 5: 取前 3 個 node embedding (對應我方Marine)
-        # shape = (bs, n_agents, hidden_dim)
-        agent_node_emb = node_embeddings[:, :self.n_agents, :]
-
-        # step 6: 每個 agent node emb -> Q-head
-        # shape = (bs, n_agents, n_actions)
-        q_values = self.q_head(agent_node_emb)  # Broadcasting: (bs, n_agents, hidden_dim) -> (bs, n_agents, n_actions)
-
-        # step 7: 若要 mask unavailable actions, 在這裡做
-        # e.g. q_values[avail_actions==0] = -9999999
+        # 5) map to Q-values
+        #    這裡簡單 linear => (bs, n_agents, n_actions)
+        q_values = self.agent.q_head(agent_embeds)
 
         return q_values
 
-    def _build_node_features_3m(self, state):
-        """示範: 從 state 中 slice 出 6 個Marine的 [hp, x, y, ...] 特徵"""
-        # 具體要看 StarCraft2Env 的 state layout
-        # Demo: node_features shape = (bs, 6, node_input_dim)
+    def _build_node_features(self, state):
+        """
+        假設6個單位 (3我方+3敵方) → each node feature = local(6dim) + global(3dim)...
+
+        你需要先保證在 starcraft2.py / get_state() 中，把
+          [health_i, shield_i, x_i, y_i, type_i, cooldown_i, ..., global_stats...]
+        打包到 state。
+
+        這裡的實作取決於你如何把state layout設計好。
+        """
         bs = state.shape[0]
-        # 假裝 state_dim=6*5=30, 每個Marine 5個特徵
-        node_input_dim = 5
-        node_features = state.view(bs, self.n_nodes, node_input_dim)
-        return node_features
+        # demo: n_nodes=6, node_input_dim=9
+        n_nodes = 6
+        node_input_dim = 9
+        node_feats = state.view(bs, n_nodes, node_input_dim)
+        return node_feats
 
-    def _build_edge_features_3m(self, node_features):
-        """計算距離/可見性/攻擊可能等 (bs, n_nodes, n_nodes, edge_input_dim)"""
-        bs = node_features.shape[0]
-        n_nodes = node_features.shape[1]
+    def _build_edge_features(self, node_feats):
+        """
+        e.g. distance, visibility, attack_possible ...
+        shape = (bs, n_nodes, n_nodes, e_dim)
+        """
+        bs, n_nodes, dim = node_feats.shape
+        # 例如 node_feats[...,0:2] = (posx, posy), or ...
+        pos_xy = node_feats[..., 3:5]  # demo: index=3,4 = x,y
+        pos_i = pos_xy.unsqueeze(2).expand(bs, n_nodes, n_nodes, 2)
+        pos_j = pos_xy.unsqueeze(1).expand(bs, n_nodes, n_nodes, 2)
+        dist_ij = torch.sqrt(torch.sum((pos_i - pos_j)**2, dim=-1))  # (bs, n_nodes, n_nodes)
 
-        # Demo: 只計算距離 => edge_feat_dim=1
-        # positions = node_features[..., 1:3] -> x,y 假設index=1,2
-        positions = node_features[..., 1:3]  # shape=(bs, n_nodes, 2)
-        # broadcast
-        pos_i = positions.unsqueeze(2).expand(bs, n_nodes, n_nodes, 2)
-        pos_j = positions.unsqueeze(1).expand(bs, n_nodes, n_nodes, 2)
-        dist_ij = torch.sqrt(torch.sum((pos_i - pos_j)**2, dim=-1)) # (bs, n_nodes, n_nodes)
+        # 另外, visibility => dist < 9 => 1 else 0
+        # attack => dist < 6 => 1 else 0
+        visibility_ij = (dist_ij < 9.0).float()
+        attack_ij = (dist_ij < 6.0).float()
 
-        # shape=(bs, n_nodes, n_nodes, 1)
-        edge_features = dist_ij.unsqueeze(-1)
+        # 只是一個範例
+        edge_features = torch.stack([dist_ij, visibility_ij, attack_ij], dim=-1)
         return edge_features

@@ -1,7 +1,6 @@
 REGISTRY = {}
 
 from .rnn_agent import RNNAgent
-from .gat_agent import SimpleGAT
-
+from .gat_agent import GATAgent
 REGISTRY["rnn"] = RNNAgent
-REGISTRY["simple_gat"] = SimpleGAT
+REGISTRY["gat_agent"] = GATAgent
