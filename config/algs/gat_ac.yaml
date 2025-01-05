@@ -1,0 +1,73 @@
+# pymarl/config/algs/gat_ac.yaml
+
+name: "gat_ac_anymap"
+inherits: "coma"
+
+# 添加 GAT 特有的參數
+gat_node_input_dim: 9
+gat_edge_input_dim: 3
+gat_hidden_dim: 32
+# 必須包含 COMA 所需的參數
+target_update_interval: 200
+# 1) 環境/Runner：
+env: "sc2"
+env_args:
+  map_name: "3m"          # 或其他 SMAC map
+  # 其他 SMAC 參數 ...
+  difficulty: "7"
+  obs_last_action: False
+  state_timestep_number: False
+  state_last_action: False
+runner: "episode"
+
+# runner/log 參數
+batch_size_run: 1
+test_nepisode: 20
+test_interval: 2000
+log_interval: 2000
+runner_log_interval: 2000
+learner_log_interval: 2000
+
+# 2) Agent / MAC / Learner：
+agent: "gat_agent"
+mac:   "gat_mac"
+
+agent_output_type: "pi_logits"       # Actor-Critic => policy logits
+action_selector: "multinomial"       # COMA 常用的 multinomial
+mask_before_softmax: False
+
+learner: "coma_learner"
+critic_q_fn: "coma"
+critic_baseline_fn: "coma"
+critic_train_mode: "seq"
+critic_train_reps: 1
+td_lambda: 0.8
+q_nstep: 0
+
+# 3) GAT 相關
+gat_node_input_dim: 9    # local(6)+global(3)
+gat_edge_input_dim: 3    # distance, visibility, attackable => 你可以自己定義
+gat_hidden_dim: 32
+
+# 4) 訓練 & Hyperparams
+t_max: 100000
+batch_size: 32
+buffer_size: 5000
+burn_in_period: 32
+gamma: 0.99
+lr: 0.0001
+critic_lr: 0.0001
+grad_norm_clip: 10
+
+epsilon_start: 0.5
+epsilon_finish: 0.01
+epsilon_anneal_time: 100000
+
+# 5) Logging / Save
+use_cuda: True
+save_model: False
+save_model_interval: 200000
+checkpoint_path: ""
+evaluate: False
+load_step: 0
+save_replay: False

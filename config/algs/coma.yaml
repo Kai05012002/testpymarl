@@ -12,6 +12,8 @@ buffer_size: 8
 batch_size_run: 8
 batch_size: 8
 
+target_update_interval: 200
+
 env_args:
   state_last_action: False # critic adds last action internally
 
