@@ -1,0 +1,83 @@
+# config/algs/gat_ac_1m.yaml
+
+name: "enhanced_gat_1m_dqn"
+
+#########################################
+# 1) 環境
+#########################################
+env: "sc2"                # 代表 StarCraft II 環境
+env_args:
+  map_name: "1m_vs_1m"    # ✅ 改成 1v1 對戰
+  difficulty: "7"         # 難度 (1~10) or "7" => Hard
+  obs_all_health: True
+  obs_own_health: True
+  debug: False            # 是否顯示 Debug 訊息
+
+#########################################
+# 2) 多智能體 參數
+#########################################
+agent: "enhanced_gat_agent"     # 要對應 modules/agents/__init__.py REGISTRY
+mac:   "enhanced_gat_mac"       # 要對應 controllers/__init__.py REGISTRY
+
+# 選擇 Q-learning => agent_output_type = "q"
+agent_output_type: "q"
+
+# 選擇 QLearner => PyMARL 內建 "q_learner"
+learner: "q_learner"
+
+#mixer: null    # ✅ 用 DQN 訓練 (每個 agent 有獨立 Q 值)
+mixer: "qmix"   # ✅ 用 QMix 訓練 (全局 Q 值合併)
+
+# 因應 qmix
+mixing_embed_dim: 32
+hypernet_embed: 64
+hypernet_layers: 2
+
+#########################################
+# 3) GAT 相關參數
+#########################################
+gat_node_input_dim: 9   # ✅ GAT 輸入的特徵維度 (1v1 可視需求調整)
+gat_edge_input_dim: 3   # e.g. [dist, visibility, attackable]
+gat_hidden_dim: 32      # hidden dim
+
+#########################################
+# 4) Exploration (epsilon-greedy)
+#########################################
+action_selector: "epsilon_greedy"
+epsilon_start: 1.0
+epsilon_finish: 0.05
+epsilon_anneal_time: 50000  # 幾個 steps 內線性遞減
+test_greedy: True           # 測試時用 greedy
+
+#########################################
+# 5) 訓練超參數
+#########################################
+t_max: 1000000          # ✅ 增加訓練次數，1v1 需要較長訓練
+batch_size: 32
+buffer_size: 5000
+burn_in_period: 32
+gamma: 0.99
+lr: 0.0005            # learning rate for agent
+grad_norm_clip: 10
+
+# target_update_interval: 200  # 也可在 default.yaml or q_learner.py 預設
+double_q: True        # 是否用Double Q
+
+#########################################
+# 6) 其他
+#########################################
+runner: "episode"           # 單環境, episode_runner
+batch_size_run: 1           # ✅ 1v1 訓練時確保每次只跑一場對戰
+test_nepisode: 20           # 每次測試episode數
+test_interval: 2000         # 幾個timesteps後測試
+log_interval: 2000          # Log訓練信息
+
+use_cuda: True              # 是否用 GPU
+save_model: False           # 若要存 model, 可改 True
+save_model_interval: 200000
+
+checkpoint_path: ""         # ✅ 如果要載入模型，可填入已訓練好的 model 路徑
+load_step: ""               # ✅ 若要繼續訓練，可填入對應的 checkpoint step
+
+evaluate: False
+target_update_interval: 200

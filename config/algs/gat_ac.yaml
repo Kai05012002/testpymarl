@@ -47,7 +47,7 @@ q_nstep: 0
 # 3) GAT 相關
 gat_node_input_dim: 9    # local(6)+global(3)
 gat_edge_input_dim: 3    # distance, visibility, attackable => 你可以自己定義
-gat_hidden_dim: 32
+gat_hidden_dim: 32       # 可以考慮降低到 16 以減少數量
 
 # 4) 訓練 & Hyperparams
 t_max: 100000
@@ -55,9 +55,10 @@ batch_size: 32
 buffer_size: 5000
 burn_in_period: 32
 gamma: 0.99
-lr: 0.0001
-critic_lr: 0.0001
+lr: 0.00005            # 降低學習率
+critic_lr: 0.00005     # 降低學習率
 grad_norm_clip: 10
+dropout_prob: 0.1      # 添加 Dropout 比例
 
 epsilon_start: 0.5
 epsilon_finish: 0.01
