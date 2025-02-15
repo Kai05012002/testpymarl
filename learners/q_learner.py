@@ -24,12 +24,12 @@ class QLearner:
         if args.mixer is not None:
             if args.mixer == "vdn":
                 self.mixer = VDNMixer()
-            #elif args.mixer == "qmix":
-                #self.mixer = QMixer(args)
+            elif args.mixer == "qmix":
+                self.mixer = QMixer(args)
             #elif args.mixer =="gpqmix":
                 #self.mixer = GPQMixer(args)
-            elif args.mixer =="qmeta":
-                self.mixer = QMeta(args)
+            #elif args.mixer =="qmeta":
+                #self.mixer = QMeta(args)
             else:
                 raise ValueError("Mixer {} not recognised.".format(args.mixer))
             self.params += list(self.mixer.parameters())
