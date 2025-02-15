@@ -20,13 +20,19 @@ agent: "enhanced_gat_agent"     # 要對應 modules/agents/__init__.py REGISTRY
 mac:   "enhanced_gat_mac"       # 要對應 controllers/__init__.py REGISTRY
 
 # 選擇 Q-learning => agent_output_type = "q"
-agent_output_type: "q"
-
+#agent_output_type: "q"
+agent_output_type: "pi_logits"  # Actor-Critic 要輸出 policy logits
+# Actor‐Critic 相關
+critic_hidden_dim: 64       # Critic網路隱藏層
+value_loss_coef: 1.0        # Critic loss在整體的比重
+entropy_loss_coef: 0.01     # Policy entropy激勵
+gae_lambda: 0.95            # 若要使用GAE
 # 選擇 QLearner => PyMARL 內建 "q_learner"
-learner: "q_learner"
+#learner: "q_learner"
+learner: "a2c_learner"
 
-#mixer: null    # ✅ 用 DQN 訓練 (每個 agent 有獨立 Q 值)
-mixer: "qmix"   # ✅ 用 QMix 訓練 (全局 Q 值合併)
+mixer: null    # ✅ 用 DQN 訓練 (每個 agent 有獨立 Q 值)
+#mixer: "qmix"   # ✅ 用 QMix 訓練 (全局 Q 值合併)
 
 # 因應 qmix
 mixing_embed_dim: 32
@@ -56,7 +62,7 @@ t_max: 1000000          # ✅ 增加訓練次數，1v1 需要較長訓練
 batch_size: 32
 buffer_size: 5000
 burn_in_period: 32
-gamma: 0.99
+gamma: 0.95
 lr: 0.0005            # learning rate for agent
 grad_norm_clip: 10
 
@@ -76,8 +82,11 @@ use_cuda: True              # 是否用 GPU
 save_model: False           # 若要存 model, 可改 True
 save_model_interval: 200000
 
-checkpoint_path: ""         # ✅ 如果要載入模型，可填入已訓練好的 model 路徑
-load_step: ""               # ✅ 若要繼續訓練，可填入對應的 checkpoint step
+#checkpoint_path: "C:/Users/hsk/Desktop/python/pymarl/results/models/enhanced_gat_1m_dqn__2025-02-15_13-30-57"         # ✅ 如果要載入模型，可填入已訓練好的 model 路徑
+#load_step: 3121247               # ✅ 若要繼續訓練，可填入對應的 checkpoint step
+
+checkpoint_path: ""
+load_step: ""
 
 evaluate: False
 target_update_interval: 200
